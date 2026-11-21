@@ -369,6 +369,20 @@ def _find_note_by_id(obj, nid: str) -> Optional[dict]:
     return found["n"]
 
 
+def _xhs_img_original(u: str) -> Optional[str]:
+    """从带展示样式的图片 URL 提取 fileId，拼无签名原图直链（无水印）。
+    页面给的 !h5_1080jpg / !style_xxx 是展示样式（含水印角标）；
+    sns-img-hw 的 /spectrum/{fileId} 直链是未处理原图。"""
+    if not u:
+        return None
+    m = re.search(r"/([0-9a-zA-Z]{20,})![a-z0-9_]*", u)
+    if not m:
+        m = re.search(r"/spectrum/([0-9a-zA-Z]{20,})(?:[/?]|$)", u)
+    if not m:
+        m = re.search(r"/(?:notes_pre_post|sns_imgup|spectrum)/([0-9a-zA-Z]{20,})(?:[/?]|$)", u)
+    return f"https://sns-img-hw.xhscdn.com/spectrum/{m.group(1)}" if m else None
+
+
 async def resolve_xhs(client: httpx.AsyncClient, url: str) -> dict:
     if "xhslink" in url:
         url = await expand(client, url, UA_IPHONE)
@@ -471,7 +485,8 @@ async def resolve_xhs(client: httpx.AsyncClient, url: str) -> dict:
              or (((im.get("info_list") or im.get("infoList") or [{}])[-1].get("image_url"))
                  or ((im.get("info_list") or im.get("infoList") or [{}])[-1].get("url"))))
         if u:
-            items.append(_mk_item("image", f"图片 {i2 + 1}", url=u, ext="jpg"))
+            items.append(_mk_item("image", f"图片 {i2 + 1}",
+                                  url=_xhs_img_original(u) or u, ext="jpg"))
         lp = _g(im, "live_photo_path", "livePhotoPath")
         if lp:
             items.append(_mk_item("video", f"实况视频 {i2 + 1}（Live Photo 视频轨）", url=lp, ext="mov"))
