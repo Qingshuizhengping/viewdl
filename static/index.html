@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ViewDL</title>
+<style>
+  :root{
+    --bg:#f7f7f5; --surface:#ffffff; --line:rgba(0,0,0,.09);
+    --tx:#1d1d1f; --tx2:#66666b; --err:#b3261e;
+    --r:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{background:var(--bg)}
+  body{
+    color:var(--tx);
+    font:15px/1.5 -apple-system,"SF Pro Text","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:rgba(0,0,0,.14)}
+  ::placeholder{color:var(--tx2)}
+  a{color:inherit}
+  :focus-visible{outline:2px solid var(--tx);outline-offset:2px;border-radius:6px}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  button:disabled{cursor:default;opacity:.4}
+
+  .wrap{max-width:620px;margin:0 auto;padding:20px 20px 96px}
+  header{display:flex;align-items:baseline;justify-content:space-between;padding:10px 2px 26px}
+  .wordmark{font-size:14px;font-weight:600;letter-spacing:-.01em}
+  .quiet{font-size:13px;color:var(--tx2);text-decoration:none}
+  .quiet:hover{color:var(--tx);text-decoration:underline;text-underline-offset:3px}
+
+  form.paste{display:flex;flex-direction:column;gap:10px;background:var(--surface);
+             border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+  textarea{border:0;outline:0;resize:none;background:transparent;color:var(--tx);
+           font:inherit;min-height:24px;max-height:120px;caret-color:var(--tx)}
+  .paste-foot{display:flex;justify-content:flex-end}
+  .primary{background:var(--tx);color:var(--bg);border-radius:9px;padding:7px 18px;
+           font-size:13px;font-weight:600;letter-spacing:.01em;transition:opacity .15s}
+  .primary:hover{opacity:.85}
+
+  .error{color:var(--err);font-size:13px;padding:12px 2px 0}
+
+  section{margin-top:36px}
+  h2{font-size:12px;font-weight:600;color:var(--tx2);letter-spacing:.02em;margin-bottom:10px}
+
+  .head{display:flex;gap:14px;align-items:center}
+  .cv{width:56px;height:56px;border-radius:10px;object-fit:cover;flex:none;border:1px solid var(--line);
+      background:#ececea}
+  .meta{font-size:12px;color:var(--tx2);font-variant-numeric:tabular-nums}
+  .title{font-size:15px;font-weight:600;line-height:1.45;margin-top:2px;
+         display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+  .group{margin-top:22px}
+  .rows{display:flex;flex-direction:column}
+  .row{display:flex;align-items:center;gap:9px;padding:8px 10px;margin:0 -10px;border-radius:8px;
+       font-size:13.5px;cursor:pointer;transition:background .12s}
+  .row:hover{background:rgba(0,0,0,.035)}
+  .row input{accent-color:var(--tx);width:15px;height:15px;flex:none}
+  .row .sz{margin-left:auto;color:var(--tx2);font-size:12px;font-variant-numeric:tabular-nums}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+  .tile{position:relative;padding:0;border-radius:8px;overflow:hidden;aspect-ratio:1;
+        outline:2px solid transparent;outline-offset:-2px;transition:outline-color .12s}
+  .tile img{width:100%;height:100%;object-fit:cover;display:block;background:#ececea}
+  .tile[aria-pressed="true"]{outline-color:var(--tx)}
+  .foot{display:flex;justify-content:flex-end;margin-top:24px}
+
+  .job{padding:14px 2px;border-bottom:1px solid var(--line)}
+  .job:last-child{border-bottom:0}
+  .jt{display:flex;justify-content:space-between;gap:16px;font-size:13.5px}
+  .jn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .js{color:var(--tx2);font-size:12px;white-space:nowrap}
+  .bar{height:2px;background:rgba(0,0,0,.08);border-radius:1px;margin-top:9px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--tx);transition:width .4s,width .4s cubic-bezier(.16,1,.3,1)}
+  .jm{display:flex;justify-content:space-between;gap:16px;margin-top:8px;
+      font-size:12px;color:var(--tx2);font-variant-numeric:tabular-nums}
+  .jm .save{color:var(--tx);font-weight:600;text-decoration:none}
+  .jm .save:hover{text-decoration:underline;text-underline-offset:3px}
+  .jm .err{color:var(--err)}
+  .jm .emsg{color:var(--err);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .rec{display:flex;align-items:baseline;gap:12px;padding:10px 2px;border-bottom:1px solid var(--line);
+       font-size:13px}
+  .rec:last-child{border-bottom:0}
+  .rn{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rm{color:var(--tx2);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .rm .save{color:var(--tx);font-weight:600;text-decoration:none;margin-left:10px}
+  .rm .save:hover{text-decoration:underline;text-underline-offset:3px}
+
+  [hidden]{display:none}
+  #result:not([hidden]){animation:in .18s cubic-bezier(.16,1,.3,1)}
+  @keyframes in{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="wordmark">ViewDL</span>
+    <button class="quiet" type="button" onclick="openFolder()">打开文件夹</button>
+  </header>
+
+  <form class="paste" onsubmit="return parse(event)">
+    <textarea id="input" rows="1" aria-label="链接" placeholder="粘贴链接"></textarea>
+    <div class="paste-foot">
+      <button class="primary" id="go" type="submit">解析</button>
+    </div>
+  </form>
+
+  <div class="error" id="err" role="alert" hidden></div>
+
+  <section id="result" hidden>
+    <div class="head">
+      <img class="cv" id="cv" alt="" referrerpolicy="no-referrer" hidden>
+      <div style="min-width:0">
+        <div class="meta" id="meta"></div>
+        <div class="title" id="title"></div>
+      </div>
+    </div>
+    <div id="groups"></div>
+    <div class="foot">
+      <button class="primary" id="dl" type="button" onclick="download()">下载</button>
+    </div>
+  </section>
+
+  <section id="tasksSec" hidden aria-live="polite">
+    <h2>任务</h2>
+    <div id="tasks"></div>
+  </section>
+
+  <section id="recSec" hidden>
+    <h2>记录</h2>
+    <div id="recs"></div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let RESULT = null;
+
+const fmt = n => { if (!n || n <= 0) return ""; const u = ["B","KB","MB","GB"]; let i = 0;
+  while (n >= 1024 && i < 3) { n /= 1024; i++; } return n.toFixed(n < 10 && i > 0 ? 1 : 0) + u[i]; };
+
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : "请求失败");
+  return j;
+}
+
+function setErr(m) { const e = $("#err"); e.hidden = !m; e.textContent = m || ""; }
+
+async function parse(ev) {
+  ev.preventDefault();
+  const t = $("#input").value.trim();
+  setErr("");
+  if (!t) { setErr("先粘贴一条链接"); return false; }
+  const b = $("#go");
+  b.disabled = true; b.textContent = "解析中…";
+  try {
+    render(await post("api/parse", { text: t }));
+  } catch (e) {
+    setErr(e.message); $("#result").hidden = true; RESULT = null;
+  } finally {
+    b.disabled = false; b.textContent = "解析";
+  }
+  return false;
+}
+
+function render(res) {
+  RESULT = res;
+  setErr("");
+  $("#meta").textContent = [res.platform_label, res.author].filter(Boolean).join(" · ");
+  $("#title").textContent = res.title || "";
+  const cv = $("#cv");
+  if (res.cover) { cv.src = res.cover; cv.hidden = false; cv.onerror = () => cv.hidden = true; }
+  else cv.hidden = true;
+
+  const isLive = i => String(i.label).includes("实况");
+  const q = res.items.filter(i => i.kind === "video" && !isLive(i));
+  const live = res.items.filter(i => i.kind === "video" && isLive(i));
+  const imgs = res.items.filter(i => i.kind === "image");
+  const auds = res.items.filter(i => i.kind === "audio");
+
+  const g = $("#groups");
+  g.innerHTML = "";
+
+  const rowHtml = (it, input) =>
+    `<label class="row" data-id="${it.id}">${input}
+       <span>${it.label}</span>${it.size ? `<span class="sz">${fmt(it.size)}</span>` : ""}</label>`;
+  const fieldset = (name, rows) =>
+    `<div class="group"><h2>${name}</h2><div class="rows">${rows}</div></div>`;
+
+  if (q.length)
+    g.insertAdjacentHTML("beforeend", fieldset("清晰度",
+      q.map(i => rowHtml(i, `<input type="radio" name="q" data-id="${i.id}">`)).join("")));
+  if (live.length)
+    g.insertAdjacentHTML("beforeend", fieldset("实况图视频轨",
+      live.map(i => rowHtml(i, `<input type="checkbox" class="cb" data-id="${i.id}">`)).join("")));
+  if (auds.length)
+    g.insertAdjacentHTML("beforeend", fieldset("音频",
+      auds.map(i => rowHtml(i, `<input type="checkbox" class="cb" data-id="${i.id}">`)).join("")));
+  if (imgs.length)
+    g.insertAdjacentHTML("beforeend",
+      `<div class="group"><h2>图片 ${imgs.length}</h2><div class="grid">` +
+      imgs.map(i => `<button type="button" class="tile" data-id="${i.id}" aria-pressed="false"
+                      aria-label="${i.label}">
+                      <img src="${i.url}" referrerpolicy="no-referrer" loading="lazy" alt=""></button>`).join("") +
+      `</div></div>`);
+
+  g.querySelectorAll('input[type=radio],input.cb').forEach(el =>
+    el.addEventListener("change", updateBtn));
+  g.querySelectorAll(".tile").forEach(el =>
+    el.addEventListener("click", () => {
+      el.setAttribute("aria-pressed", el.getAttribute("aria-pressed") !== "true");
+      updateBtn();
+    }));
+
+  if (q.length) g.querySelector('input[type=radio]').checked = true;
+  if (!q.length) g.querySelectorAll(".tile").forEach(el => el.setAttribute("aria-pressed", "true"));
+  updateBtn();
+  $("#result").hidden = false;
+}
+
+function picked() {
+  const ids = [];
+  const q = document.querySelector('input[name=q]:checked');
+  if (q) ids.push(q.dataset.id);
+  document.querySelectorAll("input.cb:checked").forEach(el => ids.push(el.dataset.id));
+  document.querySelectorAll('.tile[aria-pressed="true"]').forEach(el => ids.push(el.dataset.id));
+  return ids;
+}
+function updateBtn() {
+  const n = picked().length;
+  const b = $("#dl");
+  b.disabled = !n;
+  b.textContent = n ? `下载 ${n} 个文件` : "下载";
+}
+
+async function download() {
+  if (!RESULT) return;
+  const items = RESULT.items.filter(i => picked().includes(i.id));
+  if (!items.length) return;
+  const b = $("#dl"); b.disabled = true;
+  try { await post("api/download", { platform: RESULT.platform, title: RESULT.title, raw_url: RESULT.url, items }); }
+  catch (e) { setErr(e.message); }
+  finally { b.disabled = false; updateBtn(); }
+}
+
+const STATE = { pending: "等待中", downloading: "下载中", done: "已完成", error: "失败" };
+
+async function refreshTasks() {
+  let list = [];
+  try { list = (await (await fetch("api/jobs")).json()).jobs || []; } catch (e) {}
+  const active = list.filter(j => j.status === "pending" || j.status === "downloading").length;
+  $("#tasksSec").hidden = !list.length;
+  $("#tasks").innerHTML = list.map(j => {
+    const pct = j.status === "done" ? 100 : (j.progress || 0);
+    const meta = j.status === "done"
+      ? `<span>${fmt(j.total)}</span><a class="save" href="api/file?name=${encodeURIComponent(j.file)}" download>保存</a>`
+      : j.status === "error"
+        ? `<span class="emsg">${j.error || ""}</span>`
+        : `<span>${fmt(j.downloaded)}${j.total ? " / " + fmt(j.total) : ""}</span><span>${fmt(j.speed)}/s</span>`;
+    return `<div class="job">
+      <div class="jt"><span class="jn">${j.label}</span><span class="js">${STATE[j.status] || j.status}</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="jm">${meta}</div>
+    </div>`;
+  }).join("");
+}
+
+async function refreshRecords() {
+  let files = [];
+  try { files = (await (await fetch("api/history")).json()).files || []; } catch (e) {}
+  $("#recSec").hidden = !files.length;
+  $("#recs").innerHTML = files.map(f =>
+    `<div class="rec"><span class="rn">${f.name}</span>
+       <span class="rm">${fmt(f.size)} · ${new Date(f.mtime * 1000).toLocaleDateString("zh-CN")}
+         <a class="save" href="api/file?name=${encodeURIComponent(f.name)}" download>保存</a></span>
+     </div>`).join("");
+}
+
+async function openFolder() { try { await post("api/open-folder", {}); } catch (e) { setErr(e.message); } }
+
+$("#input").addEventListener("input", function () {
+  this.style.height = "auto";
+  this.style.height = Math.min(this.scrollHeight, 120) + "px";
+});
+setInterval(() => { refreshTasks(); }, 1200);
+refreshTasks(); refreshRecords();
+</script>
+</body>
+</html>
