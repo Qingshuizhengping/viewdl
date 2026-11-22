@@ -30,7 +30,22 @@ from pydantic import BaseModel
 BASE_DIR = Path(__file__).resolve().parent
 DOWNLOAD_DIR = BASE_DIR / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(exist_ok=True)
 STATIC_DIR = BASE_DIR / "static"
+
+_FAIL_LOCK = threading.Lock()
+
+
+def log_fail(kind: str, detail: str):
+    """失败持久化：parse/download 错误带时间与 URL 落盘，供事后排查"""
+    line = f"{time.strftime('%F %T')} [{kind}] {detail}".replace("\n", " ") + "\n"
+    try:
+        with _FAIL_LOCK:
+            with open(LOG_DIR / "failures.log", "a", encoding="utf-8") as f:
+                f.write(line)
+    except Exception:
+        pass
 
 PORT = int(os.environ.get("VIEWDL_PORT", "8770"))
 
@@ -485,8 +500,10 @@ async def resolve_xhs(client: httpx.AsyncClient, url: str) -> dict:
              or (((im.get("info_list") or im.get("infoList") or [{}])[-1].get("image_url"))
                  or ((im.get("info_list") or im.get("infoList") or [{}])[-1].get("url"))))
         if u:
-            items.append(_mk_item("image", f"图片 {i2 + 1}",
-                                  url=_xhs_img_original(u) or u, ext="jpg"))
+            it = _mk_item("image", f"图片 {i2 + 1}",
+                          url=_xhs_img_original(u) or u, ext="jpg")
+            it["fb"] = u  # 原图直链 404 时回落到页面签名 URL
+            items.append(it)
         lp = _g(im, "live_photo_path", "livePhotoPath")
         if lp:
             items.append(_mk_item("video", f"实况视频 {i2 + 1}（Live Photo 视频轨）", url=lp, ext="mov"))
@@ -797,7 +814,8 @@ def _curl_fallback(job: dict, url: str, platform: str, ext: str, headers: dict):
         job["error"] = f"下载失败（curl 兜底异常 {e}）"
 
 
-def _direct_worker(job: dict, url: str, platform: str, ext: str):
+def _direct_worker(job: dict, url: str, platform: str, ext: str, fb: Optional[str] = None):
+    job["url"] = url
     headers = {"User-Agent": UA_PC}
     headers.update(DL_HEADERS.get(platform, {}))
     try:
@@ -836,13 +854,21 @@ def _direct_worker(job: dict, url: str, platform: str, ext: str):
                     job["progress"] = 100
                     job["status"] = "done"
     except Exception as e:
-        # python TLS/网络栈失败 → curl 兜底（不动用 SEM，兜底自带限速意义不大）
+        # python TLS/网络栈失败 → curl 兜底；仍失败且有回落地址（如被样式签名锁死的直链）→ 原页面 URL 再试
         try:
             _curl_fallback(job, url, platform, ext, headers)
             if job.get("status") == "done":
                 return
         except Exception:
             pass
+        if fb and fb != url:
+            try:
+                _curl_fallback(job, fb, platform, ext, headers)
+                if job.get("status") == "done":
+                    return
+            except Exception:
+                pass
+        log_fail("download", f"{job.get('platform')} {url} → {e}")
         job["status"] = "error"
         job["error"] = str(e)[:300] or "下载失败"
 
@@ -910,6 +936,7 @@ class DLItem(BaseModel):
     ext: str = "mp4"
     url: Optional[str] = None
     format_id: Optional[str] = None
+    fb: Optional[str] = None  # 主直链失败时的回落地址（如 XHS 原页面图片 URL）
 
 
 class DLReq(BaseModel):
@@ -949,6 +976,7 @@ async def api_parse(req: ParseReq):
                 errs.append(f"[{eng}] 解析超时，请重试")
             except Exception as e:
                 errs.append(f"[{eng}] {type(e).__name__}: {e}")
+    log_fail("parse", f"{plat} {url} → {'；'.join(errs)[:300]}")
     raise HTTPException(422, "解析失败：" + "；".join(errs))
 
 
@@ -966,7 +994,7 @@ def api_download(req: DLReq):
                              args=(job, req.raw_url, it.format_id, req.title, req.platform),
                              daemon=True).start()
         elif it.url:
-            threading.Thread(target=_direct_worker, args=(job, it.url, req.platform, it.ext),
+            threading.Thread(target=_direct_worker, args=(job, it.url, req.platform, it.ext, it.fb),
                              daemon=True).start()
         else:
             job["status"] = "error"
@@ -981,7 +1009,7 @@ def api_jobs():
         lst = sorted(JOBS.values(), key=lambda j: j["created"], reverse=True)
         return {"jobs": [{k: j[k] for k in
                           ("id", "label", "platform", "kind", "status", "progress", "downloaded",
-                           "total", "speed", "file", "error", "created")} for j in lst[:60]]}
+                           "total", "speed", "file", "error", "url", "created")} for j in lst[:60]]}
 
 
 @app.get("/api/history")
